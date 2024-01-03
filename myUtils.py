@@ -142,9 +142,9 @@ class ccxtBinance:
         return qty
 
     # Define function to place buy order
-    async def place_buy_order(self, symbol, size):
+    def place_buy_order(self, symbol, size):
         try:
-            buyId = await self.exchange.create_market_buy_order(symbol, size)
+            buyId = self.exchange.create_market_buy_order(symbol, size)
             return buyId
         except:
             return False
@@ -166,19 +166,19 @@ class ccxtBinance:
         size = usdt_amount / price
         return size
     
-def in_pos(self, coin):
-    balance = self.exchange.fetch_balance()['info']['balances']
-    try:
-        asset = float([i['free'] for i in balance if i['asset'] == coin][0])
-        if asset > 0:
-            in_position = True
-        else:
+    def in_pos(self, coin):
+        balance = self.exchange.fetch_balance()['info']['balances']
+        try:
+            asset = float([i['free'] for i in balance if i['asset'] == coin][0])
+            if asset > 0:
+                in_position = True
+            else:
+                in_position = False
+        except Exception as e:
+            print(e)
             in_position = False
-    except Exception as e:
-        print(e)
-        in_position = False
-        asset = 0
-    return in_position, balance, asset
+            asset = 0
+        return in_position, balance, asset
 
 class getHist_Data:
     def __init__(self):
@@ -240,3 +240,134 @@ async def getdata(coin, timeframe, fast_ema_period = 9, slow_ema_period = 18):
     df['sell_signal'] = sell_signal
     await client.close_connection()
     return df 
+
+# async def place_buy_order(symbol, size):
+#     try:
+#         client = await AsyncClient.create(api_key=demo_apiKey, api_secret=demo_secret, testnet=sandbox_mode)
+#         buyId = await client.order_market_buy(symbol=symbol, quantity=size)
+#         await client.close_connection()
+#         return buyId
+#     except Exception as e:
+#         print(f"Failed to place buy order: {e}")
+#         await client.close_connection()
+#         return None
+
+# async def place_sell_order(symbol, size):
+#     try:
+#         client = await AsyncClient.create(api_key=demo_apiKey, api_secret=demo_secret, testnet=sandbox_mode)
+#         buyId = await client.order_market_sell(symbol=symbol, quantity=size)
+#         await client.close_connection()
+#         return buyId
+#     except Exception as e:
+#         print(f"Failed to place buy order: {e}")
+#         await client.close_connection()
+#         return None
+    
+
+# async def get_symbol_price(symbol):
+#     client = await AsyncClient.create()
+#     ticker = await client.get_symbol_ticker(symbol=symbol)
+#     await client.close_connection()
+#     return float(ticker['price'])
+
+# async def get_order_size(symbol, usdt_amount):
+#     client = await AsyncClient.create(api_key=demo_apiKey, api_secret=demo_secret, testnet=sandbox_mode)
+#     # Get the exchange info to retrieve symbol details
+#     exchange_info = await client.get_exchange_info()
+
+#     # Find the symbol details for the given coin symbol
+#     symbol_info = next(
+#         (symbol for symbol in exchange_info['symbols'] if symbol['symbol'] == symbol), None
+#     )
+
+#     if symbol_info:
+#         # Retrieve the filters to get the minimum order size
+#         filters = symbol_info['filters']
+#         lot_size_filter = next(
+#             (filter for filter in filters if filter['filterType'] == 'LOT_SIZE'), None
+#         )
+
+#         if lot_size_filter:
+#             # Extract the minimum order size and step size
+#             min_qty = float(lot_size_filter['minQty'])
+#             step_size = float(lot_size_filter['stepSize'])
+
+#             # Calculate the order size based on the provided USDT amount
+#             symbol_price = await get_symbol_price(symbol)
+#             order_size = usdt_amount / symbol_price
+#             order_size -= order_size % step_size  # Adjust to the nearest step size
+
+#             # Ensure the order size is not below the minimum quantity
+#             order_size = max(min_qty, order_size)
+            
+#             await client.close_connection()
+
+#             return order_size
+
+#     return None
+
+# async def buyCoin(coin, usdt_amount = 10):
+#     try: 
+#         orderSize = await get_order_size(coin, usdt_amount)
+#         print(coin, orderSize)
+#         order = await place_buy_order(coin, orderSize)
+# #         time.sleep(5)
+#         trades_dict['coins'].append(coin)
+#         trades_dict['buy_order_data'].append(order)
+#         print(order)
+#     except Exception as e:
+#         print(coin, e)
+#         return None
+#     return trades_dict
+
+# async def buy_all_coins(buysignals):
+
+#     tasks = [buyCoin(coin) for coin in buysignals]
+#     results = await asyncio.gather(*tasks)
+
+#     return results
+
+# # async def main():
+# # #     client = await AsyncClient.create()
+# #     trades_data = await buy_all_coins(buysignals)
+# # #     await client.close_connection()
+#     return trades_data
+
+# async def get_order_size(symbol, usdt_amount):
+#     client = await AsyncClient.create(api_key=demo_apiKey, api_secret=demo_secret, testnet=sandbox_mode)
+#     # Get the exchange info to retrieve symbol details
+#     symbol_info = await client.get_symbol_info(symbol)
+
+#     # Find the symbol details for the given coin symbol
+# #     symbol_info = next(
+# #         (symbol for symbol in exchange_info['symbols'] if symbol['symbol'] == symbol), None
+# #     )
+# #     print(symbol_info)
+
+#     if symbol_info:
+#         # Retrieve the filters to get the minimum order size
+#         filters = symbol_info['filters']
+#         lot_size_filter = next(
+#             (filter for filter in filters if filter['filterType'] == 'LOT_SIZE'), None
+#         )
+
+#         if lot_size_filter:
+#             # Extract the minimum order size and step size
+#             min_qty = float(lot_size_filter['minQty'])
+#             step_size = float(lot_size_filter['stepSize'])
+
+#             # Calculate the order size based on the provided USDT amount
+#             symbol_price = await get_symbol_price(symbol)
+#             order_size = usdt_amount / symbol_price
+#             order_size -= order_size % step_size  # Adjust to the nearest step size
+
+#             # Ensure the order size is not below the minimum quantity
+#             order_size = max(min_qty, order_size)
+
+#             await client.close_connection()
+
+#             return order_size
+
+#     await client.close_connection()
+
+#     return None
