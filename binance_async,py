@@ -1,0 +1,186 @@
+from myUtils import *
+import importlib
+import pandas as pd
+import pandas_ta as ta
+import numpy as np
+from datetime import datetime, timedelta
+import asyncio
+from binance import AsyncClient
+import time
+import myUtils
+from botConfig import *
+import nest_asyncio
+nest_asyncio.apply()
+
+importlib.reload(myUtils)
+
+# Initialize cb as a global variable
+cb = None
+in_position = None
+
+# Async function to initialize Binance and activate mode
+async def initialize_binance():
+    # Instantiate ccxtBinance class
+    cb = ccxtBinance()
+    # Activate Binance mode
+    await cb.binanceActivate(mode)
+    return cb
+
+# Read coin list from CSV
+coins = pd.read_csv('spot_coins_list.csv')['0'].tolist()
+
+# Other parameters
+timeframe = "1m"
+fast_ema_period = 9
+slow_ema_period = 18
+usdt_amount = 10
+tp_perc = 10
+
+# Initialize trades_dict
+trades_dict = {'buy_order_data': [], 'sell_order_data': []}
+
+# Async function to fetch OHLCV data for a coin
+
+
+async def fetch_ohlcv(coin):
+    try:
+        data = await getdata(coin, timeframe)
+        print(coin, data)
+        return coin, data.buy_signal.iloc[-2], data.sell_signal.iloc[-2]
+    except Exception as e:
+        print(coin, e)
+        return coin, None, None
+
+# Async function to fetch OHLCV data for all coins
+
+
+async def fetch_all_ohlcv(coins):
+    tasks = [fetch_ohlcv(coin) for coin in coins]
+    results = await asyncio.gather(*tasks)
+    return results
+
+# Async function to update positions
+
+
+async def update_positions():
+    global in_position
+    balances = await cb.in_pos('BTC')
+    for coin in coins:
+        coin = coin[:-4]
+        try:
+            asset = float([i['free']
+                          for i in balances[1] if i['asset'] == coin][0])
+            in_position[coin + 'USDT'] = asset > 0
+        except:
+            in_position[coin + 'USDT'] = False
+
+# Async function to buy a coin
+
+
+async def buyCoin(coin):
+    try:
+        orderSize = await cb.calculate_order_size(coin, usdt_amount)
+        print(coin, orderSize)
+        order = await cb.place_buy_order(coin, orderSize)
+        print(order)
+
+        # Append buy order information to trades_dict
+        trades_dict['buy_order_data'].append(
+            {'coin': coin, 'order': order, 'order_size': orderSize})
+
+        return order
+    except Exception as e:
+        print(coin, e)
+        return None
+
+# Async function to sell a coin
+
+
+async def sellCoin(coin):
+    try:
+        orderSize = await cb.getqty(coin[:-4])
+        print(coin, orderSize)
+        order = await cb.place_sell_order(coin, orderSize)
+        print(order)
+
+        # Append sell order information to trades_dict
+        trades_dict['sell_order_data'].append(
+            {'coin': coin, 'order': order, 'order_size': orderSize})
+
+        return order
+    except Exception as e:
+        print(coin, e)
+        return None
+
+# Main async function
+
+
+async def main_logic():
+    global cb, in_position  # Declare cb as a global variable
+    try:
+        # Initialize Binance
+        cb = await initialize_binance()
+        
+        # Initialize bot parameters
+        running_bots = 0
+        max_running_bots = 10
+
+        # Initialize in_position dictionary
+        in_position = {coin: False for coin in coins}
+        print("in_position", in_position)
+
+        # Get quantity for USDT
+        starting = time.time()
+        qty = await cb.getqty('USDT')
+        print(qty)
+
+        signals_dict = {'coins': [], 'buy_signals': [], 'sell_signals': []}
+        ohlcv_data = await fetch_all_ohlcv(coins)
+
+        for coin, buy_signal, sell_signal in ohlcv_data:
+            if buy_signal is not None:
+                signals_dict['coins'].append(coin)
+                signals_dict['buy_signals'].append(buy_signal)
+                signals_dict['sell_signals'].append(sell_signal)
+
+        # Create DataFrame from signals_dict
+        signals_df = pd.DataFrame(signals_dict).set_index('coins')
+        print("Signals df", signals_df)
+
+        # Extract buy and sell signals
+        buysignals = signals_df[signals_df['buy_signals']].index.to_list()
+        sellsignals = signals_df[signals_df['sell_signals']].index.to_list()
+        print("buysignals", buysignals, "sellsignals", sellsignals)
+
+        # Buy based on signals
+        if len(buysignals) > 0:
+            for coin in buysignals:
+                print(coin)
+                if running_bots <= max_running_bots and not in_position[coin]:
+                    print('buy please')
+                    # Use 'await' for asynchronous function
+                    order = await buyCoin(coin)
+                    print(order)
+                    running_bots += 1
+
+        # Sell based on signals
+        if len(sellsignals) > 0:
+            for coin in sellsignals:
+                if in_position[coin]:
+                    # Use 'await' for asynchronous function
+                    order = await sellCoin(coin)
+                    running_bots -= 1
+    except Exception as e:
+        print(e)
+    finally:
+        # Update positions
+        await update_positions()
+        # Ensure you close the exchange instance to release resources
+        if cb is not None:
+            await cb.close_exchange()
+
+# Run the event loop
+try:
+    asyncio.run(main_logic())
+except Exception as e:
+    print(e)
