@@ -19,6 +19,8 @@ cb = None
 in_position = None
 
 # Async function to initialize Binance and activate mode
+
+
 async def initialize_binance():
     # Instantiate ccxtBinance class
     cb = ccxtBinance()
@@ -62,7 +64,7 @@ async def fetch_all_ohlcv(coins):
 # Async function to update positions
 
 
-async def update_positions():
+async def update_positions(posfile):
     global in_position
     balances = await cb.in_pos('BTC')
     for coin in coins:
@@ -77,12 +79,15 @@ async def update_positions():
 # Async function to buy a coin
 
 
-async def buyCoin(coin):
+async def buyCoin(coin, qtyfile):
     try:
         orderSize = await cb.calculate_order_size(coin, usdt_amount)
         print(coin, orderSize)
         order = await cb.place_buy_order(coin, orderSize)
         print(order)
+
+        # Update qty.json file with the new order size
+        update_dict_value(qtyfile, coin, orderSize)
 
         # Append buy order information to trades_dict
         trades_dict['buy_order_data'].append(
@@ -96,10 +101,11 @@ async def buyCoin(coin):
 # Async function to sell a coin
 
 
-async def sellCoin(coin):
+async def sellCoin(coin, qty):
     try:
         orderSize = await cb.getqty(coin[:-4])
-        print(coin, orderSize)
+        print(f'Order size for {coin}: {orderSize}')
+        print(f'Quantity for {coin}: {qty}')
         order = await cb.place_sell_order(coin, orderSize)
         print(order)
 
@@ -120,18 +126,37 @@ async def main_logic():
     try:
         # Initialize Binance
         cb = await initialize_binance()
-        
+
         # Initialize bot parameters
         running_bots = 0
         max_running_bots = 10
 
         # Initialize in_position dictionary
         in_position = {coin: False for coin in coins}
+        print("in_position initialized", in_position)
+        
+        # Generic in_position file in the working directory
+        posfile = os.path.join('in_pos.json')
+        # update_inpos(posfile, in_position)
+
+        # Load the previous in_position state
+        if os.path.isfile(posfile):
+            with open(posfile, 'r') as file:
+                in_position = json.load(file)
+
         print("in_position", in_position)
 
         # Get quantity for USDT
         starting = time.time()
         qty = await cb.getqty('USDT')
+        # Generic qty file in the working directory
+        qtyfile = os.path.join('qty.json')
+
+        # Load the previous qty state
+        if os.path.isfile(qtyfile):
+            with open(qtyfile, 'r') as file:
+                qty = json.load(file)
+
         print(qty)
 
         signals_dict = {'coins': [], 'buy_signals': [], 'sell_signals': []}
@@ -159,22 +184,58 @@ async def main_logic():
                 if running_bots <= max_running_bots and not in_position[coin]:
                     print('buy please')
                     # Use 'await' for asynchronous function
-                    order = await buyCoin(coin)
-                    print(order)
+                    order = await buyCoin(coin, qtyfile)
+                    buy_price = float(order['info']['fills'][0]['price'])
                     running_bots += 1
+
+                    # Update in_position in the JSON file
+                    update_dict_value(posfile, coin, True)
+
+                    # Get OHLCV data for the specific coin
+                    ohlcv_data_coin = await getdata(coin, timeframe)
+                    # Append buy trade to the trades CSV file
+                    file_paths = create_file_names(coin)
+                    
+                    print("ohlcv_data_coin:", ohlcv_data_coin)
+                    print("buy_price:", buy_price)
+                    print("file_paths[0]:", file_paths[0])
+                    
+                    print("Before buycsv function")
+                    buycsv(ohlcv_data_coin, buy_price, file_paths[0])
+                    print("After buycsv function")
+                    csvlog(ohlcv_data_coin, file_paths[1])
 
         # Sell based on signals
         if len(sellsignals) > 0:
             for coin in sellsignals:
                 if in_position[coin]:
+                    print('Sell please!')
                     # Use 'await' for asynchronous function
-                    order = await sellCoin(coin)
+                    # Fetch the quantity for the coin from qty.json
+                    qty = read_dict_value(qtyfile, coin)
+
+                    if qty is not None:
+                        print(f"Quantity for {coin}: {qty}")
+                        order = await sellCoin(coin, qty)
+                    
                     running_bots -= 1
+                    # Update in_position in the JSON file
+                    update_dict_value(posfile, coin, False)
+                    # Get OHLCV data for the specific coin
+                    ohlcv_data_coin = await getdata(coin, timeframe)
+                    # Append buy trade to the trades CSV file
+                    file_paths = create_file_names(coin)
+                    buyprice = read_buyprice(file_paths[0])
+                    # replace with actual sell price
+                    sell_price = float(order['info']['fills'][0]['price'])
+                    sellcsv(ohlcv_data_coin, buyprice, sell_price, file_paths[0])
+                    csvlog(ohlcv_data_coin, file_paths[1])
+
     except Exception as e:
         print(e)
     finally:
         # Update positions
-        await update_positions()
+        await update_positions(posfile)
         # Ensure you close the exchange instance to release resources
         if cb is not None:
             await cb.close_exchange()

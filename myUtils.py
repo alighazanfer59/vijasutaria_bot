@@ -10,8 +10,8 @@ import time
 import asyncio
 from binance import AsyncClient
 import aiohttp
+import json
 
-#
 
 
 class ccxtBinance:
@@ -289,3 +289,110 @@ async def getdata(coin, timeframe, fast_ema_period=9, slow_ema_period=18):
     df['sell_signal'] = sell_signal
     await client.close_connection()
     return df
+
+
+def create_file_names(coin):
+    coin_lower = coin.lower()
+    if not os.path.exists(coin_lower):
+        os.makedirs(coin_lower)
+
+    tradesfile = os.path.join(coin_lower, f"{coin_lower}_trades.csv")
+    logfile = os.path.join(coin_lower, f"{coin_lower}_log.csv")
+    posfile = os.path.join('in_pos.json')  
+    qtyfile = os.path.join('qty.json')  
+
+    # Check if files exist, if not, create them
+    for filename, headers in zip([tradesfile, logfile, posfile, qtyfile], [['timestamp', 'buyprice', 'sellprice', 'profit%'],
+                                                                       ['timestamp', 'Open', 'High', 'Low', 'Close', 'Volume', 'fast_ema', 'slow_ema', 'buy_signal', 'sell_signal'],
+                                                                       {}, {}]):
+        if not os.path.isfile(filename):
+            with open(filename, mode='w') as file:
+                if filename.endswith('.csv'):
+                    writer = csv.writer(file)
+                    writer.writerow(headers)
+                elif filename.endswith('.json'):
+                    json.dump({}, file)
+
+    return tradesfile, logfile, posfile, qtyfile
+
+
+def csvlog(df, filename):
+    headers = ['timestamp', 'Open', 'High', 'Low', 'Close',
+               'Volume', 'fast_ema', 'slow_ema', 'buy_signal', 'sell_signal']
+
+    if not os.path.isfile(filename):
+        with open(filename, mode='w') as file:
+            writer = csv.writer(file)
+            writer.writerow(headers)
+
+    with open(filename, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        timestamp = df.index[-1]
+        row_to_write = [timestamp] + df.iloc[-1].tolist()
+        writer.writerow(row_to_write)
+
+# code for appending a new row to the trades CSV file
+
+
+def buycsv(df, buyprice, filename):
+    headers = ['timestamp', 'buyprice', 'sellprice', 'profit%']
+
+    if not os.path.isfile(filename):
+        with open(filename, mode='w') as file:
+            writer = csv.writer(file)
+            writer.writerow(headers)
+
+    with open(filename, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        buy_price = buyprice  # replace with actual buy price
+        sell_price = "Position Still Open"  # replace with actual sell price
+        # ((sell_price - buy_price) / buy_price) * 100
+        profit_perc = "nan"
+        timestamp = df.index[-1]
+        writer.writerow([timestamp, buy_price, sell_price, profit_perc])
+
+
+def sellcsv(df, buyprice, sellprice, filename):
+    headers = ['timestamp', 'buyprice', 'sellprice', 'profit%']
+
+    if not os.path.isfile(filename):
+        with open(filename, mode='w') as file:
+            writer = csv.writer(file)
+            writer.writerow(headers)
+
+    with open(filename, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        profit_perc = ((sellprice - buyprice) / buyprice) * 100
+        timestamp = df.index[-1]
+        writer.writerow([timestamp, buyprice, sellprice, profit_perc])
+
+def read_buyprice(filename):
+    try:
+        trades = pd.read_csv(filename)
+        buyprice = trades['buyprice'].iloc[-1]
+    except:
+        buyprice = np.nan
+    return buyprice
+
+
+def read_dict_value(filename, key):
+    try:
+        with open(filename, 'r') as f:
+            d = json.load(f)
+        return d.get(key, None)
+    except Exception as e:
+        print(f"Error reading value for {key} from {filename}: {e}")
+        return None
+
+
+def update_dict_value(filename, key, value):
+    with open(filename, 'r') as f:
+        d = json.load(f)
+    d[key] = value
+    with open(filename, 'w') as f:
+        json.dump(d, f)
+        
+
+def update_inpos(filename, data):
+    with open(filename, 'w') as f:
+        json.dump(data, f)
