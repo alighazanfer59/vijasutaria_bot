@@ -396,3 +396,23 @@ def update_dict_value(filename, key, value):
 def update_inpos(filename, data):
     with open(filename, 'w') as f:
         json.dump(data, f)
+
+
+# Function to read or create 'running_bots.json' file
+def read_running_bots(filename):
+    try:
+        with open(filename, 'r') as file:
+            running_bots_data = json.load(file)
+        return running_bots_data
+    except FileNotFoundError:
+        # Create the file and initialize data if it doesn't exist
+        initial_data = {"count": 0, "coins": []}
+        with open(filename, 'w') as file:
+            json.dump(initial_data, file)
+        return initial_data
+
+
+# Function to update running bots count in the file
+def update_running_bots(filename, running_bots_data):
+    with open(filename, 'w') as file:
+        json.dump(running_bots_data, file)
